@@ -160,6 +160,7 @@ cc_library(
         "lib/io/path.h",
         "lib/io/record_reader.h",
         "lib/io/record_writer.h",
+        "lib/io/snappy_file.h",
         "lib/io/table.h",
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
@@ -767,8 +768,8 @@ cc_library(
         "platform/tensor_coding.h",
         "platform/tracing.h",
     ],
-    copts = tf_copts(),
-    linkopts = ["-ldl"],
+    copts = tf_copts() + ["-DSNAPPY"],
+    linkopts = ["-ldl", "-lsnappy"],
     deps = [
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
