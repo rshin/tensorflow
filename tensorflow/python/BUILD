@@ -120,6 +120,36 @@ cc_library(
     ],
 )
 
+cc_binary(
+    name = "framework/test_file_system.so",
+    srcs = ["framework/test_file_system.cc"],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        "//tensorflow:darwin": [],
+    }),
+    linkshared = 1,
+    deps = [
+        "//google/protobuf",
+        "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+py_test(
+    name = "file_system_test",
+    size = "small",
+    srcs = ["framework/file_system_test.py"],
+    data = [":framework/test_file_system.so"],
+    main = "framework/file_system_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_test(
     name = "pywrap_status_test",
     size = "small",
@@ -626,10 +656,6 @@ tf_gen_op_wrapper_py(
         "MatMul",
         "Sigmoid",
         "Tanh",
-        "Lgamma",
-        "Digamma",
-        "Erf",
-        "Erfc",
     ],
     require_shape_functions = True,
 )
@@ -847,7 +873,6 @@ py_library(
     deps = [
         ":framework",
         ":ops",
-        ":server_lib",
         ":session",
         ":training_ops",
     ],
@@ -958,7 +983,6 @@ tf_py_wrap_cc(
     swig_includes = [
         "client/device_lib.i",
         "client/events_writer.i",
-        "client/server_lib.i",
         "client/tf_session.i",
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
@@ -969,6 +993,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_writer.i",
         "platform/base.i",
         "platform/numpy.i",
+        "training/server_lib.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
     ],
@@ -1006,25 +1031,15 @@ py_library(
     ],
 )
 
-py_library(
-    name = "server_lib",
-    srcs = ["client/server_lib.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":pywrap_tensorflow",
-    ],
-)
-
 py_test(
     name = "server_lib_test",
     size = "small",
-    srcs = ["client/server_lib_test.py"],
+    srcs = ["training/server_lib_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":extra_py_tests_deps",
         ":framework",
         ":framework_test_lib",
-        ":server_lib",
         ":session",
     ],
 )
@@ -1235,6 +1250,7 @@ cuda_py_tests(
         ["training/*_test.py"],
         exclude = [
             "training/input_test.py",
+            "training/server_lib_test.py",
             "training/session_manager_test.py",
             "training/supervisor_test.py",
         ],

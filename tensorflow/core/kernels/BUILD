@@ -736,6 +736,7 @@ tf_kernel_libraries(
     name = "linalg",
     prefixes = [
         "cholesky_op",
+        "cholesky_grad",
         "determinant_op",
         "self_adjoint_eig_op",
         "matrix_inverse_op",
@@ -1211,6 +1212,7 @@ tf_kernel_libraries(
         "serialize_sparse_op",
     ],
     deps = [
+        ":bounds_check",
         ":fill_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
