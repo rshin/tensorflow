@@ -276,6 +276,40 @@ class PoolingTest(tf.test.TestCase):
                     dilation_rate=[1, 1, 1],
                     strides=strides)
 
+  def _test_gradient_gradient(self, input_shape, **kwargs):
+    x_val = -np.arange(
+        np.prod(input_shape), dtype=np.float32).reshape(input_shape) - 1
+    x = tf.constant(x_val, name="x", dtype=tf.float32)
+    output = tf.nn.pool(input=x, **kwargs)
+
+    gradient, = tf.gradients(output, [x])
+    y_shape = gradient.get_shape().as_list()
+
+    err = tf.test.compute_gradient_error(
+        [x, output, gradient],
+        [input_shape, output.get_shape().as_list(), y_shape],
+        gradient, y_shape, x_init_value=[x_val]
+    )
+    err_tolerance = 1e-2
+    self.assertLess(err, err_tolerance)
+
+  def testGradientGradient2D(self):
+    with self.test_session():
+      for padding in ["SAME", "VALID"]:
+        # Only MaxPoolGrad has its own gradient implemented.
+        for pooling_type in ["MAX"]:
+          for input_shape in [[2, 4, 5, 2], [1, 5, 4, 1]]:
+            for window_shape in [[1, 1], [2, 1], [2, 2]]:
+              if padding != "SAME":
+                for dilation_rate in [[1, 1], [2, 1], [2, 2]]:
+                  self._test_gradient_gradient(
+                      input_shape=input_shape,
+                      window_shape=window_shape,
+                      padding=padding,
+                      pooling_type=pooling_type,
+                      dilation_rate=dilation_rate,
+                      strides=[1, 1])
+
 
 if __name__ == "__main__":
   tf.test.main()

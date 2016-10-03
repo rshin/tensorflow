@@ -507,13 +507,40 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(1, out_shape, &argmax));
 
     LaunchMaxPoolingWithArgmax<Device, T>::launch(context, params, tensor_in,
-                                                  output, argmax);
+                                                  output, argmax, padding_);
   }
 
  private:
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmax")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64>("Targmax")
+                            .TypeConstraint<float>("T"),
+                        MaxPoolingWithArgmaxOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmax")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64>("Targmax")
+                            .TypeConstraint<Eigen::half>("T"),
+                        MaxPoolingWithArgmaxOp<CPUDevice, Eigen::half>);
+
+template <typename T>
+struct LaunchMaxPoolingWithArgmax<CPUDevice, T> {
+  static void launch(OpKernelContext* context, const PoolParameters& params,
+                     const Tensor& input, Tensor* output, Tensor* argmax,
+                     const Padding& padding) {
+    Tensor input_backprop;
+    OP_REQUIRES_OK(
+        context, context->allocate_temp(DataTypeToEnum<T>::v(), input.shape(),
+                                        &input_backprop));
+
+    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
+        context, output, argmax, &input_backprop, input, *output,
+        params, padding);
+  }
 };
 
 template <typename Device, typename T>
@@ -653,7 +680,8 @@ REGISTER_KERNEL_BUILDER(
 template <typename T>
 struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
-                     const Tensor& input, Tensor* output, Tensor* argmax) {
+                     const Tensor& input, Tensor* output, Tensor* argmax,
+                     const Padding& padding) {
     bool status = MaxPoolForwardWithOptionalArgmax(
         input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
         params.tensor_in_cols, params.depth, params.out_height,

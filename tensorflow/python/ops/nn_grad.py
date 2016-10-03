@@ -397,6 +397,27 @@ def _MaxPoolGrad(op, grad):
                                    padding=op.get_attr("padding"),
                                    data_format=op.get_attr("data_format"))
 
+@ops.RegisterGradient("MaxPoolGrad")
+def _MaxPoolGradGrad(op, grad):
+  orig_input, orig_output, orig_grad = op.inputs
+
+  ksize = op.get_attr("ksize")
+  strides = op.get_attr("strides")
+  padding = op.get_attr("padding")
+  data_format = op.get_attr("data_format")
+
+  if data_format != 'NHWC':
+    raise ValueError("Only data_format == NHWC is supported.")
+
+  _, argmax = nn_ops.max_pool_with_argmax(orig_input, ksize, strides, padding)
+  grad_grad = array_ops.gather(array_ops.reshape(grad, [-1]), argmax)
+
+  return (
+      array_ops.zeros_like(orig_input),
+      array_ops.zeros_like(orig_output),
+      grad_grad,
+  )
+
 
 @ops.RegisterGradient("FractionalMaxPool")
 def _FractionalMaxPoolGrad(op, grad_0, unused_grad_1, unused_grad_2):
