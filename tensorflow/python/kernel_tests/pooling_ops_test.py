@@ -682,11 +682,13 @@ class PoolingTest(tf.test.TestCase):
         [1, window_rows, window_cols, 1], [1, row_stride, col_stride, 1],
         padding)
 
-  def _testMaxPoolGradGrad(self, input_sizes, output_sizes, window_rows,
-      window_cols, row_stride, col_stride, padding, use_gpu):
-    """Verifies the gradients of the avg pooling function.
+  def _ConstructAndTestGradGrad(self, func_name, input_sizes, output_sizes,
+      window_rows, window_cols, row_stride, col_stride, padding, data_format,
+      use_gpu):
+    """Verifies the gradients of the gradients function for max and avg pooling.
 
     Args:
+      func_name: 'max_pool' or 'avg_pool'.
       input_sizes: Input tensor dimensions.
       output_sizes: Output tensor dimensions.
       window_rows: kernel size in row dim
@@ -694,29 +696,45 @@ class PoolingTest(tf.test.TestCase):
       row_stride: Row Stride.
       col_stride: Col Stride.
       padding: Padding type.
+      data_format: Data format.
       use_gpu: whether we are running on GPU
     """
+    assert func_name in ("avg_pool", "max_pool")
     assert input_sizes[0] == output_sizes[0]
     assert input_sizes[3] == output_sizes[3]
     total_size = 1
     for s in input_sizes:
       total_size *= s
     # Initializes the input tensor with array containing random numbers.
-    np.random.seed(0)
+    #np.random.seed(0)
+    #x = np.asfarray(
+    #    np.random.random_sample(input_sizes) * 100, dtype=np.float32)
     x = np.asfarray(
-        np.random.random_sample(input_sizes) * 100, dtype=np.float32)
+        np.arange(1, np.product(input_sizes) + 1),
+        dtype=np.float32).reshape(input_sizes)
 
     with self.test_session(use_gpu=use_gpu) as sess:
       input_tensor = tf.constant(x, shape=input_sizes, name="input")
-      func_name = "max_pool"
       err_margin = 1e-3
 
-      ksize = [1, window_rows, window_cols, 1]
-      strides = [1, row_stride, col_stride, 1]
+      if data_format == "NCHW":
+        ksize = [1, 1, window_rows, window_cols]
+        strides = [1, 1, row_stride, col_stride]
+        input_tensor = NHWCToNCHW(input_tensor)
+        input_sizes = [input_sizes[0], input_sizes[3]] + input_sizes[1:3]
+        output_sizes = [output_sizes[0], output_sizes[3]] + output_sizes[1:3]
+      else:
+        ksize = [1, window_rows, window_cols, 1]
+        strides = [1, row_stride, col_stride, 1]
 
-      output_tensor = tf.nn.max_pool(
-          input_tensor, [1, window_rows, window_cols, 1],
-          [1, row_stride, col_stride, 1], padding)
+      if func_name == "avg_pool":
+        output_tensor = tf.nn.avg_pool(
+            input_tensor, [1, window_rows, window_cols, 1],
+            [1, row_stride, col_stride, 1], padding)
+      else:
+        output_tensor = tf.nn.max_pool(
+            input_tensor, [1, window_rows, window_cols, 1],
+            [1, row_stride, col_stride, 1], padding)
       output_init = np.asfarray(
           np.arange(1, np.product(output_sizes) + 1),
           dtype=np.float32).reshape(output_sizes)
@@ -726,77 +744,100 @@ class PoolingTest(tf.test.TestCase):
           dtype=np.float32).reshape(output_sizes)
       output_backprop_tensor = tf.constant(output_backprop_init)
 
-      t = self._MaxPoolGrad(input_tensor, output_tensor, output_backprop_tensor,
-          window_rows, window_cols, row_stride, col_stride, padding)
-
-      err = tf.test.compute_gradient_error(
-          [input_tensor, output_tensor, output_backprop_tensor],
-          [input_sizes, output_sizes, output_sizes],
-          t,
-          input_sizes,
-          x_init_value=[x, output_init, output_backprop_init],
-          delta=1e-2)
+      if func_name == "avg_pool":
+        t = gen_nn_ops._avg_pool_grad(tf.shape(input_tensor),
+            output_backprop_tensor, ksize, strides, padding, data_format)
+        #err = tf.test.compute_gradient_error(
+        gradients = tf.test.compute_gradient(
+            [output_backprop_tensor],
+            [output_sizes],
+            t,
+            input_sizes,
+            x_init_value=[output_backprop_init],
+            delta=1e-2)
+        err = 0
+        for j_t, j_n in gradients:
+          if j_t.size or j_n.size:  # Handle zero size tensors correctly
+            err = np.maximum(err, np.fabs(j_t - j_n).max())
+        if err > err_margin:
+          print('x:\n', x[0].T)
+          print('output:\n', output_backprop_init[0].T)
+          print('output backprop:\n', sess.run(t)[0].T)
+          for theoretical, numerical in gradients:
+            print("t:\n%s\nn:\n%s" % (theoretical, numerical))
+      else:
+        t = self._MaxPoolGrad(input_tensor, output_tensor,
+            output_backprop_tensor, window_rows, window_cols, row_stride,
+            col_stride, padding)
+        err = tf.test.compute_gradient_error(
+            [input_tensor, output_tensor, output_backprop_tensor],
+            [input_sizes, output_sizes, output_sizes],
+            t,
+            input_sizes,
+            x_init_value=[x, output_init, output_backprop_init],
+            delta=1e-2)
 
     print("%s gradient error = " % func_name, err)
     self.assertLess(err, err_margin)
 
-  def _testMaxPoolGradGradValidPadding1_1(self, use_gpu):
-    self._testMaxPoolGradGrad(
+  def _testMaxPoolGradGradValidPadding1_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad("max_pool",
         input_sizes=[1, 3, 3, 1],
         output_sizes=[1, 3, 3, 1], window_rows=1, window_cols=1, row_stride=1,
-        col_stride=1, padding="VALID", use_gpu=use_gpu)
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradGradValidPadding2_1_6(self, use_gpu):
-    self._testMaxPoolGradGrad(
+  def _testMaxPoolGradGradValidPadding2_1_6(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad("max_pool",
         input_sizes=[2, 6, 6, 3],
         output_sizes=[2, 5, 5, 3], window_rows=2, window_cols=2, row_stride=1,
-        col_stride=1, padding="VALID", use_gpu=use_gpu)
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradGradValidPadding2_1_7(self, use_gpu):
-    self._testMaxPoolGradGrad(
+  def _testMaxPoolGradGradValidPadding2_1_7(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad("max_pool",
         input_sizes=[2, 7, 7, 3],
         output_sizes=[2, 6, 6, 3], window_rows=2, window_cols=2, row_stride=1,
-        col_stride=1, padding="VALID", use_gpu=use_gpu)
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradGradValidPadding2_2(self, use_gpu):
-    self._testMaxPoolGradGrad(
+  def _testMaxPoolGradGradValidPadding2_2(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad("max_pool",
         input_sizes=[2, 2, 2, 3],
         output_sizes=[2, 1, 1, 3], window_rows=2, window_cols=2, row_stride=2,
-        col_stride=2, padding="VALID", use_gpu=use_gpu)
+        col_stride=2, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradGradSamePadding1_1(self, use_gpu):
-    self._testMaxPoolGradGrad(
+  def _testMaxPoolGradGradSamePadding1_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad("max_pool",
         input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 2, 4, 3], window_rows=1, window_cols=1, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradGradSamePadding2_1(self, use_gpu):
-    self._testMaxPoolGradGrad(
+  def _testMaxPoolGradGradSamePadding2_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad("max_pool",
         input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 2, 4, 3], window_rows=2, window_cols=2, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradGradSamePadding2_2(self, use_gpu):
-    self._testMaxPoolGradGrad(
+  def _testMaxPoolGradGradSamePadding2_2(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad("max_pool",
         input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 1, 2, 3], window_rows=2, window_cols=2, row_stride=2,
-        col_stride=2, padding="SAME", use_gpu=use_gpu)
+        col_stride=2, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradGradSamePadding3_1(self, use_gpu):
-    self._testMaxPoolGradGrad(
+  def _testMaxPoolGradGradSamePadding3_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad("max_pool",
         input_sizes=[1, 7, 7, 1],
         output_sizes=[1, 7, 7, 1], window_rows=3, window_cols=3, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
   def testMaxPoolGradGradAll(self):
-    self._testMaxPoolGradGradValidPadding1_1(False)
-    self._testMaxPoolGradGradValidPadding2_1_6(False)
-    self._testMaxPoolGradGradValidPadding2_1_7(False)
-    self._testMaxPoolGradGradValidPadding2_2(False)
-    self._testMaxPoolGradGradSamePadding1_1(False)
-    self._testMaxPoolGradGradSamePadding2_1(False)
-    self._testMaxPoolGradGradSamePadding2_2(False)
-    self._testMaxPoolGradGradSamePadding3_1(False)
+    for use_gpu in set([False, tf.test.is_gpu_available()]):
+      self._testMaxPoolGradGradValidPadding1_1("NHWC", use_gpu)
+      self._testMaxPoolGradGradValidPadding2_1_6("NHWC", use_gpu)
+      self._testMaxPoolGradGradValidPadding2_1_7("NHWC", use_gpu)
+      self._testMaxPoolGradGradValidPadding2_2("NHWC", use_gpu)
+      self._testMaxPoolGradGradSamePadding1_1("NHWC", use_gpu)
+      self._testMaxPoolGradGradSamePadding2_1("NHWC", use_gpu)
+      self._testMaxPoolGradGradSamePadding2_2("NHWC", use_gpu)
+      self._testMaxPoolGradGradSamePadding3_1("NHWC", use_gpu)
 
   def _testMaxPoolGradDirect(self, input_data, output_backprop,
                              expected_input_backprop, input_sizes, output_sizes,
@@ -1019,6 +1060,64 @@ class PoolingTest(tf.test.TestCase):
   def _testAvgPoolGradSamePadding3_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.avg_pool, input_sizes=[1, 7, 7, 1],
+        output_sizes=[1, 7, 7, 1], window_rows=3, window_cols=3, row_stride=1,
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
+
+  def testAvgPoolGradGrad(self):
+    #self._ConstructAndTestGradGrad(
+    #    "avg_pool", input_sizes=[1, 3, 1, 1],
+    #    output_sizes=[1, 2, 1, 1], window_rows=2, window_cols=1, row_stride=1,
+    #    col_stride=1, padding="VALID", data_format='NHWC', use_gpu=False)
+    #self._testAvgPoolGradGradValidPadding1_1('NHWC', False)
+
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._testAvgPoolGradGradValidPadding1_1(data_format, use_gpu)
+      self._testAvgPoolGradGradValidPadding2_1(data_format, use_gpu)
+      self._testAvgPoolGradGradValidPadding2_2(data_format, use_gpu)
+      self._testAvgPoolGradGradSamePadding1_1(data_format, use_gpu)
+      self._testAvgPoolGradGradSamePadding2_1(data_format, use_gpu)
+      self._testAvgPoolGradGradSamePadding2_2(data_format, use_gpu)
+      self._testAvgPoolGradGradSamePadding3_1(data_format, use_gpu)
+
+  def _testAvgPoolGradGradValidPadding1_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad(
+        "avg_pool", input_sizes=[2, 3, 3, 3],
+        output_sizes=[2, 3, 3, 3], window_rows=1, window_cols=1, row_stride=1,
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
+
+  def _testAvgPoolGradGradValidPadding2_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad(
+        "avg_pool", input_sizes=[2, 3, 3, 3],
+        output_sizes=[2, 2, 2, 3], window_rows=2, window_cols=2, row_stride=1,
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
+
+  def _testAvgPoolGradGradValidPadding2_2(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad(
+        "avg_pool", input_sizes=[2, 2, 2, 3],
+        output_sizes=[2, 1, 1, 3], window_rows=2, window_cols=2, row_stride=2,
+        col_stride=2, padding="VALID", data_format=data_format, use_gpu=use_gpu)
+
+  def _testAvgPoolGradGradSamePadding1_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad(
+        "avg_pool", input_sizes=[2, 2, 4, 3],
+        output_sizes=[2, 2, 4, 3], window_rows=1, window_cols=1, row_stride=1,
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
+
+  def _testAvgPoolGradGradSamePadding2_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad(
+        "avg_pool", input_sizes=[2, 2, 4, 3],
+        output_sizes=[2, 2, 4, 3], window_rows=2, window_cols=2, row_stride=1,
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
+
+  def _testAvgPoolGradGradSamePadding2_2(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad(
+        "avg_pool", input_sizes=[2, 2, 4, 3],
+        output_sizes=[2, 1, 2, 3], window_rows=2, window_cols=2, row_stride=2,
+        col_stride=2, padding="SAME", data_format=data_format, use_gpu=use_gpu)
+
+  def _testAvgPoolGradGradSamePadding3_1(self, data_format, use_gpu):
+    self._ConstructAndTestGradGrad(
+        "avg_pool", input_sizes=[1, 7, 7, 1],
         output_sizes=[1, 7, 7, 1], window_rows=3, window_cols=3, row_stride=1,
         col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 

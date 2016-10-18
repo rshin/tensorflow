@@ -286,8 +286,8 @@ class PoolingTest(tf.test.TestCase):
     y_shape = gradient.get_shape().as_list()
 
     err = tf.test.compute_gradient_error(
-        [x, output, gradient],
-        [input_shape, output.get_shape().as_list(), y_shape],
+        [x],
+        [input_shape],
         gradient, y_shape, x_init_value=[x_val]
     )
     err_tolerance = 1e-2
@@ -296,19 +296,24 @@ class PoolingTest(tf.test.TestCase):
   def testGradientGradient2D(self):
     with self.test_session():
       for padding in ["SAME", "VALID"]:
-        # Only MaxPoolGrad has its own gradient implemented.
         for pooling_type in ["MAX"]:
           for input_shape in [[2, 4, 5, 2], [1, 5, 4, 1]]:
             for window_shape in [[1, 1], [2, 1], [2, 2]]:
               if padding != "SAME":
                 for dilation_rate in [[1, 1], [2, 1], [2, 2]]:
-                  self._test_gradient_gradient(
-                      input_shape=input_shape,
-                      window_shape=window_shape,
-                      padding=padding,
-                      pooling_type=pooling_type,
-                      dilation_rate=dilation_rate,
-                      strides=[1, 1])
+                  try:
+                    self._test_gradient_gradient(
+                        input_shape=input_shape,
+                        window_shape=window_shape,
+                        padding=padding,
+                        pooling_type=pooling_type,
+                        dilation_rate=dilation_rate,
+                        strides=[1, 1])
+                  except Exception as e:
+                    import sys
+                    import pudb
+                    pudb.post_mortem(sys.exc_traceback, sys.exc_type,
+                        sys.exc_value)
 
 
 if __name__ == "__main__":

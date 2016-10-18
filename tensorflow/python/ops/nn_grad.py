@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
@@ -387,6 +388,16 @@ def _AvgPoolGrad(op, grad):
       data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("AvgPoolGrad")
+def _AvgPoolGradGrad(op, grad):
+  return (None,
+          nn_ops.avg_pool(grad,
+                          op.get_attr("ksize"),
+                          op.get_attr("strides"),
+                          op.get_attr("padding"),
+                          data_format=op.get_attr("data_format")))
+
+
 @ops.RegisterGradient("MaxPool")
 def _MaxPoolGrad(op, grad):
   return gen_nn_ops._max_pool_grad(op.inputs[0],
@@ -416,6 +427,20 @@ def _MaxPoolGradGrad(op, grad):
       array_ops.zeros_like(orig_input),
       array_ops.zeros_like(orig_output),
       grad_grad,
+  )
+  return (
+      logging_ops.Print(
+        array_ops.zeros_like(orig_input),
+        [''],
+        'MaxPoolGradGrad: computing grad of orig_input'),
+      logging_ops.Print(
+        array_ops.zeros_like(orig_output),
+        [''],
+        'MaxPoolGradGrad: computing grad of orig_output'),
+      logging_ops.Print(
+        grad_grad,
+        [''],
+        'MaxPoolGradGrad: computing grad of orig_grad'),
   )
 
 
