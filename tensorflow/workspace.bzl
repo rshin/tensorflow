@@ -96,11 +96,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@six_archive//:six",
   )
 
-  native.http_archive(
+  native.local_repository(
     name = "protobuf",
-    url = "http://github.com/google/protobuf/archive/c2b3e70efd2038a54ef8973771ac58192885125e.tar.gz",
-    sha256 = "eafc1bc4c27970d62effe64ba6610823fdd66711f440d8ca4a168167786a2fcb",
-    strip_prefix = "protobuf-c2b3e70efd2038a54ef8973771ac58192885125e",
+    commit = "b3173b33263728181cbdd2b78b6fdc2081a074b8",
+    remote = "https://github.com/rshin/protobuf.git",
   )
 
   native.new_http_archive(

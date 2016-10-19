@@ -67,6 +67,7 @@ sh_binary(
     name = "swig",
     srcs = ["tools/swig/swig.sh"],
     data = glob(["tools/swig/**"]),
+    visibility = ["//visibility:public"],
 )
 
 filegroup(
