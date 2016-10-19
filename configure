@@ -348,6 +348,7 @@ done
 
 #bazel_clean_and_fetch
 echo "export TF_NEED_CUDA='$TF_NEED_CUDA'"
+echo "export CUDA_TOOLKIT_PATH='$CUDA_TOOLKIT_PATH'"
 echo "export GCC_HOST_COMPILER_PATH='$GCC_HOST_COMPILER_PATH'"
 echo "export TF_CUDA_VERSION='$TF_CUDA_VERSION'"
 echo "export TF_CUDNN_VERSION='$TF_CUDNN_VERSION'"
