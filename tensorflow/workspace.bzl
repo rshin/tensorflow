@@ -96,9 +96,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@six_archive//:six",
   )
 
-  native.local_repository(
+  native.git_repository(
     name = "protobuf",
-    commit = "b3173b33263728181cbdd2b78b6fdc2081a074b8",
+    commit = "7c913d821e5e8469a84d11f4f6509c37037b1779",
     remote = "https://github.com/rshin/protobuf.git",
   )
 
